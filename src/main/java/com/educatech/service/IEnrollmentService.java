@@ -24,7 +24,7 @@ public interface IEnrollmentService {
 
     List<EnrollmentResponseDTO> getEnrollmentsByStudent(Long idStudent);
 
-    List<Enrollment> getEnrollmentsByCourse();
+    List<EnrollmentResponseDTO> getEnrollmentsByCourse(Long idCourse);
 
-    Optional<Enrollment> getEnrollmentByStudentAndCourse(User student, Course course);
+    EnrollmentResponseDTO getEnrollmentByStudentAndCourse(Long idStudent, Long idCourse);
 }

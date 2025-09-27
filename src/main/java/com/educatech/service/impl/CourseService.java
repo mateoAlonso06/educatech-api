@@ -26,6 +26,12 @@ public class CourseService implements ICourseService {
     private final IUserRepository userRepository;
     private final CourseMapper courseMapper;
 
+     /**
+     * Guarda un nuevo curso.
+     *
+     * @param course DTO de solicitud de curso.
+     * @return DTO de respuesta del curso guardado.
+     */
     @Override
     public CourseResponseDTO saveCourse(CourseRequestDTO course) {
         Course courseToSave = courseMapper.toEntity(course);
@@ -33,16 +39,35 @@ public class CourseService implements ICourseService {
         return courseMapper.toResponseDTO(savedCourse);
     }
 
+    /**
+     * Obtiene todos los cursos con paginación.
+     *
+     * @param pageable Parámetros de paginación.
+     * @return Página de DTOs de respuesta de cursos.
+     */
     @Override
     public Page<CourseResponseDTO> getAllCourses(Pageable pageable) {
         return courseRepository.findAll(pageable).map(courseMapper::toResponseDTO);
     }
 
+    /**
+     * Obtiene un curso por su ID.
+     *
+     * @param idCourse ID del curso.
+     * @return DTO de respuesta del curso.
+     */
     @Override
     public CourseResponseDTO getCourseById(Long idCourse) {
         return courseMapper.toResponseDTO(this.getCourseEntityById(idCourse));
     }
 
+    /**
+     * Actualiza un curso existente.
+     *
+     * @param idCourse            ID del curso a actualizar.
+     * @param courseWithUpdates DTO con los datos actualizados del curso.
+     * @return DTO de respuesta del curso actualizado.
+     */
     @Override
     public CourseResponseDTO updateCourse(Long idCourse, CourseRequestDTO courseWithUpdates) {
         Course existingCourse = this.getCourseEntityById(idCourse);
@@ -61,12 +86,23 @@ public class CourseService implements ICourseService {
         return courseMapper.toResponseDTO(courseRepository.save(existingCourse));
     }
 
+    /**
+     * Elimina un curso dado su ID.
+     *
+     * @param idCourse ID del curso a eliminar.
+     */
     @Override
     public void deleteCourse(Long idCourse) {
-        Course course = this.getCourseEntityById(idCourse);
-        courseRepository.delete(course);
+        Course courseToDelete = this.getCourseEntityById(idCourse);
+        courseRepository.delete(courseToDelete);
     }
 
+    /**
+     * Obtiene los cursos de un profesor dado su ID.
+     *
+     * @param idTeacher ID del profesor.
+     * @return Lista de DTOs de respuesta de cursos.
+     */
     @Override
     public List<CourseResponseDTO> getCoursesByTeacher(Long idTeacher) {
         User teacher = userRepository.findById(idTeacher)
@@ -82,6 +118,12 @@ public class CourseService implements ICourseService {
                 .toList();
     }
 
+    /**
+     * Busca cursos por una palabra clave en el título.
+     *
+     * @param titleKeyword Palabra clave para buscar en el título del curso.
+     * @return Lista de DTOs de respuesta de los cursos encontrados.
+     */
     @Override
     public List<CourseResponseDTO> searchCoursesByTitle(String titleKeyword) {
         return courseRepository.findAllByTitleLike(titleKeyword)
@@ -90,6 +132,13 @@ public class CourseService implements ICourseService {
                 .toList();
     }
 
+    /**
+     * Método auxiliar para obtener una entidad de curso por su ID.
+     * Lanza una excepción si no se encuentra.
+     *
+     * @param idCourse ID del curso.
+     * @return Entidad de curso.
+     */
     private Course getCourseEntityById(Long idCourse) {
         String message = "Course not found with id: " + idCourse;
         return courseRepository.findById(idCourse)
