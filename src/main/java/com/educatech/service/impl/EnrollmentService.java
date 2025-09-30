@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -38,6 +39,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @return DTO de respuesta de la inscripción guardada
      */
     @Override
+    @Transactional
     public EnrollmentResponseDTO saveEnrollment(EnrollmentRequestDTO enrollment) {
         Long idStudent = enrollment.getUserId();
         Long idCourse = enrollment.getCourseId();
@@ -83,6 +85,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @return Página de DTOs de respuesta de inscripciones
      */
     @Override
+    @Transactional(readOnly = true)
     public Page<EnrollmentResponseDTO> getAllEnrollments(Pageable pageable) {
         return enrollmentRepository.findAll(pageable).map(enrollmentMapper::toResponseDTO);
     }
@@ -94,6 +97,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @return DTO de respuesta de la inscripción
      */
     @Override
+    @Transactional(readOnly = true)
     public EnrollmentResponseDTO getEnrollmentById(Long id) {
         // el metodo privado maneja la excepcion
         return enrollmentMapper.toResponseDTO(this.getEnrollmentEntityById(id));
@@ -107,15 +111,14 @@ public class EnrollmentService implements IEnrollmentService {
      * @return La inscripción actualizada
      */
     @Override
+    @Transactional
     public Enrollment updateEnrollment(Long idEnrollment, EnrollmentRequestDTO enrollmentWithUpdates) {
         if (idEnrollment == null || idEnrollment <= 0) {
             throw new IllegalArgumentException("Invalid enrollment ID: " + idEnrollment);
         }
-
         if (enrollmentWithUpdates.getUserId() == null || enrollmentWithUpdates.getUserId() <= 0) {
             throw new IllegalArgumentException("Invalid student ID: " + enrollmentWithUpdates.getUserId());
         }
-
         if (enrollmentWithUpdates.getCourseId() == null || enrollmentWithUpdates.getCourseId() <= 0) {
             throw new IllegalArgumentException("Invalid course ID: " + enrollmentWithUpdates.getCourseId());
         }
@@ -124,7 +127,7 @@ public class EnrollmentService implements IEnrollmentService {
 
         // Hay que asegurarse que el estudiante y el curso existen antes de actualizar
         User student = userRepository.findById(enrollmentWithUpdates.getUserId())
-                .orElseThrow(() -> new EnrollmentNotFoundException("Student not found with id: " + enrollmentWithUpdates.getUserId()));
+                .orElseThrow(() -> new UserNotFoundException("Student not found with id: " + enrollmentWithUpdates.getUserId()));
 
         if (!this.hasRole(student, Role.STUDENT)) {
             throw new IllegalArgumentException("User with id: " + enrollmentWithUpdates.getUserId() + " is not a student");
@@ -132,6 +135,14 @@ public class EnrollmentService implements IEnrollmentService {
 
         Course course = courseRepository.findById(enrollmentWithUpdates.getCourseId())
                 .orElseThrow(() -> new CourseNotFoundException("Course not found with id: " + enrollmentWithUpdates.getCourseId()));
+
+        enrollmentRepository.getEnrollmentByStudentAndCourse(student, course)
+                .ifPresent(enrollment1 -> {
+                    throw new StudentHasEnrolledException("Student with id: " + student.getId() + " has already enrolled in course with id: " + course.getId());
+                });
+
+        existingEnrollment.setStudent(student);
+        existingEnrollment.setCourse(course);
 
         return enrollmentRepository.save(existingEnrollment);
     }
@@ -142,6 +153,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @param enrollmentId ID de la inscripción a eliminar
      */
     @Override
+    @Transactional
     public void deleteEnrollment(Long enrollmentId) {
         if (enrollmentId == null || enrollmentId <= 0) {
             throw new IllegalArgumentException("Enrollment with id: " + enrollmentId + " does not exist");
@@ -158,6 +170,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @return Lista de DTOs de respuesta de inscripciones
      */
     @Override
+    @Transactional(readOnly = true)
     public List<EnrollmentResponseDTO> getEnrollmentsByStudent(Long idStudent) {
         if (idStudent == null || idStudent <= 0) {
             throw new IllegalArgumentException("Invalid student ID: " + idStudent);
@@ -182,6 +195,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @return Lista de DTOs de respuesta de inscripciones
      */
     @Override
+    @Transactional(readOnly = true)
     public List<EnrollmentResponseDTO> getEnrollmentsByCourse(Long idCourse) {
         Course courseToFind = courseRepository.findById(idCourse)
                 .orElseThrow(() -> new CourseNotFoundException("Course not found with id: " + idCourse));
@@ -199,6 +213,7 @@ public class EnrollmentService implements IEnrollmentService {
      * @return DTO con la entidad de inscripción si existe, vacío en caso contrario
      */
     @Override
+    @Transactional(readOnly = true)
     public EnrollmentResponseDTO getEnrollmentByStudentAndCourse(Long idStudent, Long idCourse) {
         User studentToFind = userRepository.findById(idStudent)
                 .orElseThrow(() -> new UserNotFoundException("Student not found with id: " + idStudent));

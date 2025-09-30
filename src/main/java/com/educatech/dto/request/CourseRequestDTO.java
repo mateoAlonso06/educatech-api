@@ -2,6 +2,7 @@ package com.educatech.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -18,5 +19,6 @@ public class CourseRequestDTO {
     private final String description;
 
     @NotNull(message = "Teacher ID cannot be null")
+    @Positive
     private final Long teacherId;
 }

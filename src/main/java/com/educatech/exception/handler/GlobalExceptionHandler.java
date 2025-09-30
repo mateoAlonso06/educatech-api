@@ -27,7 +27,6 @@ public class GlobalExceptionHandler {
             UserNotFoundException.class,
             LessonNotFoundException.class,
             EnrollmentNotFoundException.class,
-            TeacherNotFoundException.class
     })
     public ResponseEntity<ErrorResponseDTO> handleResourceNotFoundException(RuntimeException ex, HttpServletRequest request) {
         ErrorResponseDTO errorResponse = new ErrorResponseDTO(
@@ -38,27 +37,6 @@ public class GlobalExceptionHandler {
                 request.getRequestURI()
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
-    }
-
-    /**
-     * Maneja las excepciones relacionadas con roles incorrectos.
-     * Este método se activa cuando un usuario no tiene el rol requerido para una operación.
-     * Devuelve una respuesta HTTP 400 Bad Request.
-     *
-     * @param ex      La excepción de rol requerido lanzada.
-     * @param request La petición HTTP que originó el error.
-     * @return Un ResponseEntity que contiene el DTO de error y el código de estado 400.
-     */
-    @ExceptionHandler(TeacherRoleRequiredException.class)
-    public ResponseEntity<ErrorResponseDTO> handleRoleRequiredException(TeacherRoleRequiredException ex, HttpServletRequest request) {
-        ErrorResponseDTO errorResponse = new ErrorResponseDTO(
-                LocalDateTime.now(),
-                HttpStatus.BAD_REQUEST.value(),
-                "Invalid Role",
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
     /**

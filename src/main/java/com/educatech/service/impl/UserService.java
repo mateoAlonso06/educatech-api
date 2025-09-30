@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -28,7 +29,12 @@ public class UserService implements IUserService {
      * @return DTO de respuesta del usuario guardado.
      */
     @Override
+    @Transactional
     public UserResponseDTO saveUser(UserRequestDTO userRequestDTO) {
+        String email = userRequestDTO.getEmail();
+        if (userRepository.getUserByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("Email already in use: " + email);
+        }
         User userToSave = userMapper.toEntity(userRequestDTO);
         User savedUser = userRepository.save(userToSave);
         return userMapper.toResponseDTO(savedUser);
@@ -41,6 +47,7 @@ public class UserService implements IUserService {
      * @return Página de DTOs de respuesta de usuarios.
      */
     @Override
+    @Transactional(readOnly = true)
     public Page<UserResponseDTO> getAllUsers(Pageable pageable) {
         return userRepository.findAll(pageable).map(userMapper::toResponseDTO);
     }
@@ -48,25 +55,43 @@ public class UserService implements IUserService {
     /**
      * Obtiene un usuario por su ID.
      *
-     * @param id ID del usuario.
+     * @param userId ID del usuario.
      * @return DTO de respuesta del usuario.
      */
     @Override
-    public UserResponseDTO getUserById(Long id) {
-        User user = this.getUserEntityById(id);
+    @Transactional(readOnly = true)
+    public UserResponseDTO getUserById(Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("Invalid user ID: " + userId);
+        }
+        User user = this.getUserEntityById(userId);
         return userMapper.toResponseDTO(user);
     }
 
     /**
      * Actualiza un usuario existente.
      *
-     * @param id             ID del usuario a actualizar.
+     * @param userId             ID del usuario a actualizar.
      * @param userRequestDTO DTO con los datos actualizados del usuario.
      * @return DTO de respuesta del usuario actualizado.
      */
     @Override
-    public UserResponseDTO updateUser(Long id, UserRequestDTO userRequestDTO) {
-        User existingUser = this.getUserEntityById(id);
+    @Transactional
+    public UserResponseDTO updateUser(Long userId, UserRequestDTO userRequestDTO) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("Invalid user ID: " + userId);
+        }
+
+        // comprueba que el usuario exista
+        User existingUser = this.getUserEntityById(userId);
+
+        String email = userRequestDTO.getEmail();
+        String emailExisting = existingUser.getEmail();
+
+        // si el email es distinto al existente, comprueba que no esté en uso
+        if (!email.equals(emailExisting) && userRepository.getUserByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("Email already in use: " + email);
+        }
 
         existingUser.setFirstName(userRequestDTO.getFirstname());
         existingUser.setLastName(userRequestDTO.getLastName());
@@ -83,6 +108,7 @@ public class UserService implements IUserService {
      * @param id ID del usuario a eliminar.
      */
     @Override
+    @Transactional
     public void deleteUser(Long id) {
         User userToDelete = this.getUserEntityById(id);
         userRepository.delete(userToDelete);
@@ -95,6 +121,7 @@ public class UserService implements IUserService {
      * @return Lista de DTOs de respuesta de usuarios.
      */
     @Override
+    @Transactional(readOnly = true)
     public List<UserResponseDTO> getUsersByRole(Role role) {
         return userRepository.getUsersByRole(role)
                 .stream()
@@ -109,17 +136,14 @@ public class UserService implements IUserService {
      * @return DTO de respuesta del usuario.
      */
     @Override
+    @Transactional(readOnly = true)
     public UserResponseDTO getUserByEmail(String email) {
-        return userMapper.toResponseDTO(userRepository.getUserByEmail((email)));
+        User user = userRepository.getUserByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
+        return userMapper.toResponseDTO(user);
     }
 
-    /**
-     * Método auxiliar para obtener una entidad de usuario por su ID.
-     * Lanza una excepción si no se encuentra.
-     *
-     * @param id ID del usuario.
-     * @return Entidad de usuario.
-     */
+    // Método privado para obtener la entidad User por ID con manejo de excepción
     private User getUserEntityById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
