@@ -6,9 +6,11 @@ import com.educatech.entity.Course;
 import com.educatech.entity.Enrollment;
 import com.educatech.entity.User;
 import com.educatech.enums.Role;
+import com.educatech.exception.CourseNotFoundException;
 import com.educatech.exception.EnrollmentNotFoundException;
+import com.educatech.exception.StudentHasEnrolledException;
+import com.educatech.exception.UserNotFoundException;
 import com.educatech.mapper.EnrollmentMapper;
-import com.educatech.mapper.UserMapper;
 import com.educatech.repository.ICourseRepository;
 import com.educatech.repository.IEnrollmentRepository;
 import com.educatech.repository.IUserRepository;
@@ -28,7 +30,6 @@ public class EnrollmentService implements IEnrollmentService {
     private final EnrollmentMapper enrollmentMapper;
     private final IUserRepository userRepository;
     private final ICourseRepository courseRepository;
-    private final UserMapper userMapper;
 
     /**
      * Guarda una nueva inscripción.
@@ -38,8 +39,40 @@ public class EnrollmentService implements IEnrollmentService {
      */
     @Override
     public EnrollmentResponseDTO saveEnrollment(EnrollmentRequestDTO enrollment) {
+        Long idStudent = enrollment.getUserId();
+        Long idCourse = enrollment.getCourseId();
+
+        // Validar que el ID del estudiante y del curso sean válidos
+        if (idStudent == null || idStudent <= 0) {
+            throw new IllegalArgumentException("Invalid student ID: " + idStudent);
+        }
+
+        if (idCourse == null || idCourse <= 0) {
+            throw new IllegalArgumentException("Invalid course ID: " + idCourse);
+        }
+
+        User student = userRepository.findById(idStudent)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + idStudent));
+
+        if (!this.hasRole(student, Role.STUDENT)) {
+            throw new IllegalArgumentException("User with id: " + idStudent + " is not a student");
+        }
+
+        Course course = courseRepository.findById(idCourse)
+                .orElseThrow(() -> new CourseNotFoundException("Course not found with id: " + idCourse));
+
+        enrollmentRepository.getEnrollmentByStudentAndCourse(student, course)
+                .ifPresent(enrollment1 -> {
+                    throw new StudentHasEnrolledException("Student with id: " + idStudent + " has already enrolled in course with id: " + idCourse);
+                });
+
         Enrollment enrollmentToSave = enrollmentMapper.toEntity(enrollment);
+
+        enrollmentToSave.setStudent(student);
+        enrollmentToSave.setCourse(course);
+
         Enrollment savedEnrollment = enrollmentRepository.save(enrollmentToSave);
+        // solo devuelve los ids del estudiante y del curso
         return enrollmentMapper.toResponseDTO(savedEnrollment);
     }
 
@@ -62,8 +95,8 @@ public class EnrollmentService implements IEnrollmentService {
      */
     @Override
     public EnrollmentResponseDTO getEnrollmentById(Long id) {
-        Enrollment enrollment = this.getEnrollmentEntityById(id);
-        return enrollmentMapper.toResponseDTO(enrollment);
+        // el metodo privado maneja la excepcion
+        return enrollmentMapper.toResponseDTO(this.getEnrollmentEntityById(id));
     }
 
     /**
@@ -75,14 +108,30 @@ public class EnrollmentService implements IEnrollmentService {
      */
     @Override
     public Enrollment updateEnrollment(Long idEnrollment, EnrollmentRequestDTO enrollmentWithUpdates) {
+        if (idEnrollment == null || idEnrollment <= 0) {
+            throw new IllegalArgumentException("Invalid enrollment ID: " + idEnrollment);
+        }
+
+        if (enrollmentWithUpdates.getUserId() == null || enrollmentWithUpdates.getUserId() <= 0) {
+            throw new IllegalArgumentException("Invalid student ID: " + enrollmentWithUpdates.getUserId());
+        }
+
+        if (enrollmentWithUpdates.getCourseId() == null || enrollmentWithUpdates.getCourseId() <= 0) {
+            throw new IllegalArgumentException("Invalid course ID: " + enrollmentWithUpdates.getCourseId());
+        }
+
         Enrollment existingEnrollment = this.getEnrollmentEntityById(idEnrollment);
 
         // Hay que asegurarse que el estudiante y el curso existen antes de actualizar
         User student = userRepository.findById(enrollmentWithUpdates.getUserId())
                 .orElseThrow(() -> new EnrollmentNotFoundException("Student not found with id: " + enrollmentWithUpdates.getUserId()));
 
+        if (!this.hasRole(student, Role.STUDENT)) {
+            throw new IllegalArgumentException("User with id: " + enrollmentWithUpdates.getUserId() + " is not a student");
+        }
+
         Course course = courseRepository.findById(enrollmentWithUpdates.getCourseId())
-                .orElseThrow(() -> new EnrollmentNotFoundException("Course not found with id: " + enrollmentWithUpdates.getCourseId()));
+                .orElseThrow(() -> new CourseNotFoundException("Course not found with id: " + enrollmentWithUpdates.getCourseId()));
 
         return enrollmentRepository.save(existingEnrollment);
     }
@@ -90,11 +139,15 @@ public class EnrollmentService implements IEnrollmentService {
     /**
      * Elimina una inscripción dado su ID.
      *
-     * @param id ID de la inscripción a eliminar
+     * @param enrollmentId ID de la inscripción a eliminar
      */
     @Override
-    public void deleteEnrollment(Long id) {
-        Enrollment enrollmentToDelete = this.getEnrollmentEntityById(id);
+    public void deleteEnrollment(Long enrollmentId) {
+        if (enrollmentId == null || enrollmentId <= 0) {
+            throw new IllegalArgumentException("Enrollment with id: " + enrollmentId + " does not exist");
+        }
+
+        Enrollment enrollmentToDelete = this.getEnrollmentEntityById(enrollmentId);
         enrollmentRepository.delete(enrollmentToDelete);
     }
 
@@ -106,7 +159,20 @@ public class EnrollmentService implements IEnrollmentService {
      */
     @Override
     public List<EnrollmentResponseDTO> getEnrollmentsByStudent(Long idStudent) {
-        return null;
+        if (idStudent == null || idStudent <= 0) {
+            throw new IllegalArgumentException("Invalid student ID: " + idStudent);
+        }
+
+        User studentToFind = userRepository.findById(idStudent)
+                .orElseThrow(() -> new UserNotFoundException("Student not found with id: " + idStudent));
+
+        if (!this.hasRole(studentToFind, Role.STUDENT)) {
+            throw new IllegalArgumentException("User with id: " + idStudent + " is not a student");
+        }
+
+        return enrollmentRepository.getEnrollmentsByStudent(studentToFind)
+                .stream().map(enrollmentMapper::toResponseDTO)
+                .toList();
     }
 
     /**
@@ -118,7 +184,7 @@ public class EnrollmentService implements IEnrollmentService {
     @Override
     public List<EnrollmentResponseDTO> getEnrollmentsByCourse(Long idCourse) {
         Course courseToFind = courseRepository.findById(idCourse)
-                .orElseThrow(() -> new EnrollmentNotFoundException("Course not found with id: " + idCourse));
+                .orElseThrow(() -> new CourseNotFoundException("Course not found with id: " + idCourse));
 
         return enrollmentRepository.getEnrollmentsByCourse(courseToFind).stream()
                 .map(enrollmentMapper::toResponseDTO)
@@ -134,41 +200,30 @@ public class EnrollmentService implements IEnrollmentService {
      */
     @Override
     public EnrollmentResponseDTO getEnrollmentByStudentAndCourse(Long idStudent, Long idCourse) {
-        // primero que hay que verificar que el estudiante y el curso existen
         User studentToFind = userRepository.findById(idStudent)
-                .orElseThrow(() -> new EnrollmentNotFoundException("Student not found with id: " + idStudent));
+                .orElseThrow(() -> new UserNotFoundException("Student not found with id: " + idStudent));
 
-        if (!isRole(studentToFind, Role.STUDENT)) {
-            throw new EnrollmentNotFoundException("User with id: " + idStudent + " is not a student");
+        if (!hasRole(studentToFind, Role.STUDENT)) {
+            throw new IllegalArgumentException("User with id: " + idStudent + " is not a student");
         }
 
         Course courseToFind = courseRepository.findById(idCourse)
-                .orElseThrow(() -> new EnrollmentNotFoundException("Course not found with id: " + idCourse));
+                .orElseThrow(() -> new CourseNotFoundException("Course not found with id: " + idCourse));
 
-        Enrollment enrollment = enrollmentRepository.getEnrollmentByStudentAndCourse(studentToFind, courseToFind);
+        Enrollment enrollment = enrollmentRepository.getEnrollmentByStudentAndCourse(studentToFind, courseToFind)
+                .orElseThrow(() -> new EnrollmentNotFoundException("Enrollment not found for student id: " + idStudent + " and course id: " + idCourse));
+
         return enrollmentMapper.toResponseDTO(enrollment);
     }
 
-    /**
-     * Método auxiliar para obtener una entidad de inscripción por su ID.
-     * Lanza una excepción si no se encuentra la inscripción.
-     *
-     * @param id ID de la inscripción
-     * @return Entidad de inscripción
-     */
-    private Enrollment getEnrollmentEntityById(Long id) {
-        return enrollmentRepository.findById(id)
-                .orElseThrow(() -> new EnrollmentNotFoundException("Enrollment not found with id: " + id));
+    // Metodo auxiliar para obtener una entidad de inscripción por su ID, lanzando una excepción si no se encuentra
+    private Enrollment getEnrollmentEntityById(Long enrollmentId) {
+        return enrollmentRepository.findById(enrollmentId)
+                .orElseThrow(() -> new EnrollmentNotFoundException("Enrollment not found with id: " + enrollmentId));
     }
 
-    /**
-     * Método auxiliar para verificar si un usuario tiene un rol específico.
-     *
-     * @param user Usuario a verificar
-     * @param role Rol a comprobar
-     * @return true si el usuario tiene el rol especificado, false en caso contrario
-     */
-    private boolean isRole(User user, Role role) {
+    // Metodo auxiliar para comprobar el rol de un usuario
+    private boolean hasRole(User user, Role role) {
         return user.getRole() == role;
     }
 }
